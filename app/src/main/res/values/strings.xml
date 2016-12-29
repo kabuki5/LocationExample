@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">LocationExample</string>
+    <string name="action_resurrect">com.kabuki.location.locationexample.ACTION_RESURRECT_SERVICE</string>
 </resources>

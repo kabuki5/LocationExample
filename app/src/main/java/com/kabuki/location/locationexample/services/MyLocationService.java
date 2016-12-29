@@ -1,7 +1,10 @@
 package com.kabuki.location.locationexample.services;
 
 import android.app.Service;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.location.Location;
 import android.os.Bundle;
 import android.os.Handler;
@@ -10,6 +13,7 @@ import android.os.Message;
 import android.os.Messenger;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.v4.content.LocalBroadcastManager;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -18,6 +22,7 @@ import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
 import com.kabuki.location.locationexample.MainActivity;
+import com.kabuki.location.locationexample.R;
 
 /**
  * Created by Kabuki on 28/12/2016.
@@ -38,12 +43,14 @@ public class MyLocationService extends Service implements GoogleApiClient.Connec
 
     private MainActivity.ServiceIncomingReceiver mResultReceiver;
     private LocationRequest mLocationRequest;
+    private BatteryLevelReceiver mBatteryReceiver;
 
     @Override
     public void onCreate() {
         super.onCreate();
         buildGoogleApiClient();
         mGoogleApiClient.connect();
+        registerReceivers();
     }
 
     @Override
@@ -53,9 +60,15 @@ public class MyLocationService extends Service implements GoogleApiClient.Connec
 
     @Override
     public void onDestroy() {
-        super.onDestroy();
         if (mGoogleApiClient.isConnected())
             mGoogleApiClient.disconnect();
+        unRegisterReceivers();
+        super.onDestroy();
+
+        // THIS RESURRECT THE SERVICE IF IT IS KILLED BY ANDROID OS
+        Intent resurrectServiceIntent = new Intent();
+        resurrectServiceIntent.setAction(getString(R.string.action_resurrect));
+        sendBroadcast(resurrectServiceIntent);
     }
 
     @Nullable
@@ -71,6 +84,20 @@ public class MyLocationService extends Service implements GoogleApiClient.Connec
                 .addApi(LocationServices.API)
                 .addApi(ActivityRecognition.API)
                 .build();
+    }
+// RECEIVERS MANAGEMENT
+    private void registerReceivers() {
+        mBatteryReceiver = new BatteryLevelReceiver();
+        IntentFilter filter = new IntentFilter();
+        filter.addAction("android.intent.action.ACTION_BATTERY_LOW");
+        filter.addAction("android.intent.action.ACTION_BATTERY_OKAY");
+        LocalBroadcastManager.getInstance(this).registerReceiver(mBatteryReceiver, filter);
+    }
+
+    private void unRegisterReceivers() {
+        if (mBatteryReceiver != null) {
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(mBatteryReceiver);
+        }
     }
 
 //    GOOGLE API CLIENT CALLBACKS
@@ -109,7 +136,7 @@ public class MyLocationService extends Service implements GoogleApiClient.Connec
         if (mResultReceiver != null) {
             Bundle bundle = new Bundle();
             bundle.putParcelable("location", location);
-            bundle.putString("info",getInfo());
+            bundle.putString("info", getInfo());
             mResultReceiver.send(MESSAGE_ON_LOCATION_CHANGE, bundle);
         }
     }
@@ -132,12 +159,10 @@ public class MyLocationService extends Service implements GoogleApiClient.Connec
                     mResultReceiver = bundle.getParcelable(RESULT_RECEIVER);
                     break;
             }
-
-
         }
     }
 
-
+    //Change priority and interval of the location requests
     private void swapLocationRequestPriorityAndInterval(int priority, int interval) {
         if (!mGoogleApiClient.isConnected())
             return;
@@ -149,20 +174,39 @@ public class MyLocationService extends Service implements GoogleApiClient.Connec
         LocationServices.FusedLocationApi.requestLocationUpdates(mGoogleApiClient, mLocationRequest, this);
     }
 
-    private String getInfo(){
-        if(mLocationRequest==null)
+    //    Get info to show
+    private String getInfo() {
+        if (mLocationRequest == null)
             return "";
 
         int interval = (int) mLocationRequest.getFastestInterval();
         int priority = mLocationRequest.getPriority();
-        String p ="";
-        if(priority == LocationRequest.PRIORITY_HIGH_ACCURACY)
+        String p = "";
+        if (priority == LocationRequest.PRIORITY_HIGH_ACCURACY)
             p = "HIGH ACCURACY";
-        else if(priority == LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY)
-            p= "BALANCED POWER ACCURACY";
+        else if (priority == LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY)
+            p = "BALANCED POWER ACCURACY";
+        else if (priority == LocationRequest.PRIORITY_LOW_POWER)
+            p = "LOW POWER";
 
-        return "Priority: " +p+"\nInterval: "+String.valueOf(interval/1000)+" seconds";
+        return "Priority: " + p + "\nInterval: " + String.valueOf(interval / 1000) + " seconds";
     }
 
+    //  BATTERY BROADCAST RECEIVER TO GET CONTROL OVER BATTERY CHANGES
+    class BatteryLevelReceiver extends BroadcastReceiver {
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            int priority = LocationRequest.PRIORITY_HIGH_ACCURACY;
+            if (action.equals("android.intent.action.ACTION_BATTERY_LOW")) {
+                priority = LocationRequest.PRIORITY_LOW_POWER;
+            } else if (action.equals("android.intent.action.ACTION_BATTERY_OKAY")) {
+                priority = LocationRequest.PRIORITY_HIGH_ACCURACY;//TODO => get priority from shared preferences
+            }
+            int interval = 1000; // 1 second
+            swapLocationRequestPriorityAndInterval(priority, interval);
+        }
+    }
 
 }

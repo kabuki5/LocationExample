@@ -18,6 +18,12 @@
         </activity>
         <service android:name=".services.MyLocationService" />
 
+        <receiver android:name=".receivers.ResurrectServiceReceiver">
+            <intent-filter>
+                <action android:name="com.kabuki.location.locationexample.ACTION_RESURRECT_SERVICE" />
+            </intent-filter>
+        </receiver>
+
         <meta-data
             android:name="com.google.android.gms.version"
             android:value="@integer/google_play_services_version" />
