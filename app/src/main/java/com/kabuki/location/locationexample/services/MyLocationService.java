@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.location.Location;
+import android.os.BatteryManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -13,7 +14,7 @@ import android.os.Message;
 import android.os.Messenger;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
-import android.support.v4.content.LocalBroadcastManager;
+import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -85,18 +86,20 @@ public class MyLocationService extends Service implements GoogleApiClient.Connec
                 .addApi(ActivityRecognition.API)
                 .build();
     }
-// RECEIVERS MANAGEMENT
+
+    // RECEIVERS MANAGEMENT
     private void registerReceivers() {
         mBatteryReceiver = new BatteryLevelReceiver();
         IntentFilter filter = new IntentFilter();
-        filter.addAction("android.intent.action.ACTION_BATTERY_LOW");
-        filter.addAction("android.intent.action.ACTION_BATTERY_OKAY");
-        LocalBroadcastManager.getInstance(this).registerReceiver(mBatteryReceiver, filter);
+        filter.addAction(Intent.ACTION_BATTERY_LOW);
+        filter.addAction(Intent.ACTION_BATTERY_OKAY);
+        filter.addAction(Intent.ACTION_POWER_CONNECTED);
+        registerReceiver(mBatteryReceiver, filter);
     }
 
     private void unRegisterReceivers() {
         if (mBatteryReceiver != null) {
-            LocalBroadcastManager.getInstance(this).unregisterReceiver(mBatteryReceiver);
+            unregisterReceiver(mBatteryReceiver);
         }
     }
 
@@ -198,12 +201,36 @@ public class MyLocationService extends Service implements GoogleApiClient.Connec
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            int priority = LocationRequest.PRIORITY_HIGH_ACCURACY;
-            if (action.equals("android.intent.action.ACTION_BATTERY_LOW")) {
-                priority = LocationRequest.PRIORITY_LOW_POWER;
-            } else if (action.equals("android.intent.action.ACTION_BATTERY_OKAY")) {
-                priority = LocationRequest.PRIORITY_HIGH_ACCURACY;//TODO => get priority from shared preferences
+//            Toast.makeText(context, "ACTION => " + action, Toast.LENGTH_SHORT).show();
+            int priority = LocationRequest.PRIORITY_HIGH_ACCURACY; //TODO => get priority from shared preferences
+            if (action.equals(Intent.ACTION_BATTERY_LOW)) {
+                // Are we charging / charged?
+                int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+                boolean isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                        status == BatteryManager.BATTERY_STATUS_FULL;
+                if(!isCharging){
+                        priority = LocationRequest.PRIORITY_LOW_POWER;
+                }
             }
+
+
+            /*else if (action.equals(Intent.ACTION_BATTERY_CHANGED)) {
+                int rawlevel = intent.getIntExtra("level", -1);
+                int scale = intent.getIntExtra("scale", -1);
+                int level = -1;
+                if (rawlevel >= 0 && scale > 0) {
+                    level = (rawlevel * 100) / scale;
+                }
+
+                // Are we charging / charged?
+                int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+                boolean isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                        status == BatteryManager.BATTERY_STATUS_FULL;
+                if(!isCharging){
+                    if (level < 16)
+                        priority = LocationRequest.PRIORITY_LOW_POWER;
+                }
+            }*/
             int interval = 1000; // 1 second
             swapLocationRequestPriorityAndInterval(priority, interval);
         }
